@@ -32,7 +32,8 @@
 void sigchld_handler(int s);
 void *get_in_addr(struct sockaddr *sa);
 int parse(char *source, char *username, char *password);
-int LoginUser(char *username, char *password, /* OUT */char *sessionID);
+int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *sessionID);
+void MySQLQueryFail_Handler(MYSQL *connection);
 
 int main(int argc, char *argv[])
 {
@@ -60,17 +61,24 @@ int main(int argc, char *argv[])
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
     
+    // The MySQL *object*
     MYSQL *databasecon;
+    
+    /*
+    * MySQL Login data!
+    */
     
     char *mysqluser = "LoginServer";
     char *mysqlpasswd = "jXLYAuuFxCA7g5gGG5BdzSMb";
     
-    // Attempt to initialize the database, but if that fails, log an error and quit
+    // Attempt to initialize the the MySQL object
     if((databasecon = mysql_init(NULL)) == NULL)
     {
         fprintf(stderr, "Error initializing database connection: %s\n", mysql_error(databasecon));
         return -20;
     }
+    
+    // Connect to the MySQL database
     if(mysql_real_connect(databasecon, "localhost", mysqluser, mysqlpasswd, NULL, 0, NULL, 0) == NULL)
     {
         fprintf(stderr, "Error connecting to database: %s\n", mysql_error(databasecon));
@@ -152,6 +160,7 @@ int main(int argc, char *argv[])
                                     // Attempt to parse
                                     if(parse(recvbuff, username, password))
                                     {
+                                        //LoginUser(databasecon, username, password, NULL);
                                         // TODO lookup the password (TODO make it hashed) in the database
                                         // For now just return OK (TODO make this session etc)
                                         if(send(cli_fd, "OK", sizeof("OK"), 0) == -1)
@@ -262,7 +271,41 @@ int parse(char *source, char *username, char *password)
     return 1;
 }
 
-int LoginUser(char *username, char *password, /* OUT */char *sessionID)
+void MySQLQueryFail_Handler(MYSQL *connection)
 {
+  fprintf(stderr, "Error while executing query: %s\n", mysql_error(connection));
+  mysql_close(connection);
+  exit(-22);        
+}
+
+int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *sessionID)
+{
+    // TODO make this a prepared statement!!! And use the the below escape real etc
+    // mysql_real_escape_string(username);
+    
+    // Look the user up in the database
+    if(mysql_query(connection, "SELECT * FROM `PlayerAccounts`  WHERE `UserName`=`%s`"), username)
+    {
+        MySQLQueryFail_Handler(connection);
+    }
+    
+    MYSQL_RES *entries = mysql_store_result(connection);
+    
+    if(entries == NULL)
+    {
+        // TODO look at if this also gets called if there aren't any entries and if so, ommit it and merely return false
+        MySQLQueryFail_Handler(connection);
+    }
+    
+    int numFields = mysql_num_fields(entries);
+    MYSQL_ROW entry;
+    
+    while((entry = mysql_fetch_row(entries)))
+    {
+        for(int i = 0; i < numFields; i++) 
+        { 
+          printf("%s ", entry[i] ? entry[i] : "NULL"); 
+        } 
+    }
     
 }
