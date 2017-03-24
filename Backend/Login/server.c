@@ -32,7 +32,7 @@
 void sigchld_handler(int s);
 void *get_in_addr(struct sockaddr *sa);
 int parse(char *source, char **username, char **password);
-int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *sessionID);
+int LoginUser(MYSQL *connection, MYSQL_STMT *stmt_connection, char *username, char *password, /* OUT */char *sessionID);
 void MySQLQueryFail_Handler(MYSQL *connection);
 
 int main(int argc, char *argv[])
@@ -63,6 +63,7 @@ int main(int argc, char *argv[])
     
     // The MySQL *object*
     MYSQL *databasecon;
+    MYSQL_STMT *stmt_databasecon;
     
     /*
     * MySQL Login data!
@@ -86,6 +87,12 @@ int main(int argc, char *argv[])
         return -21;
     }
     
+    if((stmt_databasecon = mysql_stmt_init(databasecon)) == NULL)
+    {
+        fprintf(stderr, "Error creating stmt object: %s\n", mysql_error(databasecon));
+        mysql_close(databasecon);
+        return -22;
+    }
     if(getaddrinfo(NULL, argv[1], &hints, &res) != 0)
     {
         perror("Error getting server address info");
@@ -177,7 +184,7 @@ int main(int argc, char *argv[])
                                     
                                     if(parse(buff, &username, &password))
                                     {
-                                        if(LoginUser(databasecon, username, password, NULL))
+                                        if(LoginUser(databasecon, stmt_databasecon, username, password, NULL))
                                         {
                                             // The user successfully logged in! TODO: return token too
                                             if(send(cli_fd, "OK", sizeof("OK"), 0) == -1)
@@ -337,13 +344,21 @@ void MySQLQueryFail_Handler(MYSQL *connection)
 {
   fprintf(stderr, "Error while executing query: %s\n", mysql_error(connection));
   mysql_close(connection);
-  exit(-22);        
+  exit(-23);        
 }
 
-int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *sessionID)
+int LoginUser(MYSQL *connection, MYSQL_STMT *stmt_connection, char *username, char *password, /* OUT */char *sessionID)
 {
     // TODO make this a prepared statement!!! And use the the below escape real etc
     // mysql_real_escape_string(username);
+    
+    char *stmtquery = malloc(strlen("SELECT * FROM PlayerAccounts WHERE UserName = \"?\"") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
+    sprintf(stmtquery, "SELECT * FROM PlayerAccounts WHERE UserName = \"?\"");
+    unsigned long length = strlen(stmtquery);
+    if(mysql_stmt_prepare(stmt_connection, stmtquery, length) != 0)
+    {
+        fprintf(stdout, "Error preparing prepared statement: %s\n", mysql_stmt_error(stmt_connection));
+    }
     
     // Create a variable to store the query and format the query
     char *query = malloc(strlen("SELECT * FROM PlayerAccounts WHERE UserName = \"\"`") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
@@ -361,10 +376,6 @@ int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *
     {
         MySQLQueryFail_Handler(connection);
     }
-    
-    
-    
-    fprintf(stdout, "Database rows with your query:\n");
     
     int numFields = mysql_num_fields(entries);
     MYSQL_ROW entry;
@@ -387,12 +398,7 @@ int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *
         else
         {
             // The users password was incorrect.
-            printf("%s != %s\n", entry[2], password);
-            //return 0;
-        }
-        for(int i = 0; i < numFields; i++) 
-        { 
-          printf("%s ", entry[i] ? entry[i] : "NULL"); 
+            // But if there are more records for this user? Continue through those.
         }
     }
     
