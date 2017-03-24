@@ -148,17 +148,28 @@ int main(int argc, char *argv[])
                             {
                                 int buffsize = sizeof(char) * 1024;
                                 char *recvbuff = malloc(buffsize);
-                                if(recv(cli_fd, recvbuff, buffsize, 0) == -1)
+                                int bytesRecieved = 0;
+                                if((bytesRecieved = recv(cli_fd, recvbuff, buffsize, 0)) == -1)
                                 {
                                     perror("Error recieving data");
                                 }
                                 else
                                 {
-                                    printf("Recieved: %s\n", recvbuff);
+                                    // Copy it to a \0 terminated string
+                                    char *buff = malloc((bytesRecieved + 1) * sizeof(char));
+                                    // Copy all of the read characters
+                                    for(int i = 0; i < bytesRecieved; i++)
+                                    {
+                                        buff[i] = recvbuff[i];
+                                    }
+                                    // Null terminate the string
+                                    buff[bytesRecieved] = '\0';
+                                    
+                                    printf("Recieved (%i bytes): %s\n", bytesRecieved, buff);
                                     char *username;
                                     char *password;
                                     // Attempt to parse
-                                    if(parse(recvbuff, username, password))
+                                    if(parse(buff, username, password))
                                     {
                                         //LoginUser(databasecon, username, password, NULL);
                                         // TODO lookup the password (TODO make it hashed) in the database
