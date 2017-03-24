@@ -23,6 +23,9 @@
 // Multithreading
 #include <pthread.h>
 #include <semaphore.h>
+// Crypto
+#include <openssl/sha.h>
+# include <openssl/rand.h>
 
 // Parameters
 #define CONNECTIONBACKLOG 5
@@ -349,17 +352,47 @@ void MySQLQueryFail_Handler(MYSQL *connection)
 
 int LoginUser(MYSQL *connection, MYSQL_STMT *stmt_connection, char *username, char *password, /* OUT */char *sessionID)
 {
+    /* TODO fix this
     // TODO make this a prepared statement!!! And use the the below escape real etc
     // mysql_real_escape_string(username);
-    
+
     char *stmtquery = malloc(strlen("SELECT * FROM PlayerAccounts WHERE UserName = \"?\"") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
     sprintf(stmtquery, "SELECT * FROM PlayerAccounts WHERE UserName = \"?\"");
+    
     unsigned long length = strlen(stmtquery);
+    
     if(mysql_stmt_prepare(stmt_connection, stmtquery, length) != 0)
     {
-        fprintf(stdout, "Error preparing prepared statement: %s\n", mysql_stmt_error(stmt_connection));
+        fprintf(stderr, "Error preparing prepared statement: %s\n", mysql_stmt_error(stmt_connection));
     }
     
+    if(mysql_stmt_param_count(stmt_connection) != 1)
+    {
+        fprintf(stderr, "Params: %lu\n", mysql_stmt_param_count(stmt_connection));
+        // Too many or too little parameters setup!
+        //fprintf(stderr, "Error preparing prepared statement: Invalid ammount of ?'s in statement!\n");
+    }
+    
+    // Setup the bind params
+    MYSQL_BIND queryVars[1];
+    
+    memset(&queryVars, 0, sizeof(queryVars));
+    
+    unsigned long strlength = strlen(username);
+    
+    queryVars[1].buffer_type = MYSQL_TYPE_STRING;
+    queryVars[1].buffer = username;
+    queryVars[1].buffer_length = strlen(username);
+    queryVars[1].is_null = 0;
+    queryVars[1].length = &strlength;
+    exit(-100);
+    */
+    
+    printf("MD result: %s\n", md);
+    
+    
+    
+    // TODO replace the * with only the required stuff
     // Create a variable to store the query and format the query
     char *query = malloc(strlen("SELECT * FROM PlayerAccounts WHERE UserName = \"\"`") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
     sprintf(query, "SELECT * FROM PlayerAccounts WHERE UserName = \"%s\"", username);
