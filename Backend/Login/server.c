@@ -31,7 +31,7 @@
 // Function Prototpyes
 void sigchld_handler(int s);
 void *get_in_addr(struct sockaddr *sa);
-int parse(char *source, char *username, char *password);
+int parse(char *source, char **username, char **password);
 int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *sessionID);
 void MySQLQueryFail_Handler(MYSQL *connection);
 
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
     }
     
     // Connect to the MySQL database
-    if(mysql_real_connect(databasecon, "localhost", mysqluser, mysqlpasswd, NULL, 0, NULL, 0) == NULL)
+    if(mysql_real_connect(databasecon, "localhost", mysqluser, mysqlpasswd, "Accounts", 0, NULL, 0) == NULL)
     {
         fprintf(stderr, "Error connecting to database: %s\n", mysql_error(databasecon));
         mysql_close(databasecon);
@@ -165,13 +165,14 @@ int main(int argc, char *argv[])
                                     // Null terminate the string
                                     buff[bytesRecieved] = '\0';
                                     
-                                    printf("Recieved (%i bytes): %s\n", bytesRecieved, buff);
+                                    //printf("Recieved (%i bytes): %s\n", bytesRecieved, buff);
                                     char *username;
                                     char *password;
                                     // Attempt to parse
-                                    if(parse(buff, username, password))
+                                    if(parse(buff, &username, &password))
                                     {
-                                        //LoginUser(databasecon, username, password, NULL);
+                                        fprintf(stdout, "Parse Success!\nUsername: %s\nPassword: %s\n", username, password);
+                                        LoginUser(databasecon, username, password, NULL);
                                         // TODO lookup the password (TODO make it hashed) in the database
                                         // For now just return OK (TODO make this session etc)
                                         if(send(cli_fd, "OK", sizeof("OK"), 0) == -1)
@@ -221,7 +222,7 @@ void *get_in_addr(struct sockaddr *sa)
     }
 }
 
-int parse(char *source, char *username, char *password)
+int parse(char *source, char **username, char **password)
 {
     // Init a variable to 0 to keep track of where in the parse we are
     int stage = 0;
@@ -239,19 +240,28 @@ int parse(char *source, char *username, char *password)
             fprintf(stdout, "Moving to next stage!\n");
             if(stage == 0)
             {
+                // TODO remove
+                fprintf(stdout, "Buffer: %s (%i chars)", buff, buffused);
                 // Allocate the right ammount of memory to username
                 username = malloc((buffused + 1) * sizeof(char));
-                // Copy the buffer to the username
-                strcpy(username, buff);
+                // Copy the buffer to the username (cant use strcpy as buff isn't null terminated)
+                for(int i = 0; i < buffused; i++)
+                {
+                    *username[i] = buff[i];
+                }
                 // Null-terminate the string
-                username[buffused + 1] = '\0';
+                *username[buffused] = '\0';
+                
+                // TODO remove also WHY THE F****CK IS'T THIS COMMUNICATED BACK?!
+                printf("Buffer2: %s (%i chars)", *username, buffused);
+                
             }
             else if(stage == 1)
             {
                 // Allocate the right ammount of memory to password
                 password = malloc((buffused + 1) * sizeof(char));
                 // Copy the buffer to the username
-                strcpy(password, buff);
+                strcpy(*password, buff);
                 // Null-terminate the string
                 password[buffused + 1] = '\0';
             }
@@ -294,8 +304,12 @@ int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *
     // TODO make this a prepared statement!!! And use the the below escape real etc
     // mysql_real_escape_string(username);
     
+    // Create a variable to store the query and format the query
+    char *query = malloc(strlen("SELECT * FROM `PlayerAccounts`  WHERE `UserName`=``") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
+    sprintf(query, "SELECT * FROM `PlayerAccounts`  WHERE `UserName`=`%s`", username);
+    
     // Look the user up in the database
-    if(mysql_query(connection, "SELECT * FROM `PlayerAccounts`  WHERE `UserName`=`%s`"), username)
+    if(mysql_query(connection, query))
     {
         MySQLQueryFail_Handler(connection);
     }
@@ -307,6 +321,8 @@ int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *
         // TODO look at if this also gets called if there aren't any entries and if so, ommit it and merely return false
         MySQLQueryFail_Handler(connection);
     }
+    
+    fprintf(stdout, "Database rows with your query:\n");
     
     int numFields = mysql_num_fields(entries);
     MYSQL_ROW entry;
