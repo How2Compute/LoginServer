@@ -152,6 +152,8 @@ int main(int argc, char *argv[])
                                 if((bytesRecieved = recv(cli_fd, recvbuff, buffsize, 0)) == -1)
                                 {
                                     perror("Error recieving data");
+                                    // Close the socket; The client shall have to open a new one for a new request
+                                    break;
                                 }
                                 else
                                 {
@@ -162,12 +164,51 @@ int main(int argc, char *argv[])
                                     {
                                         buff[i] = recvbuff[i];
                                     }
-                                    // Null terminate the string
+                                    // Null terminate the string (to avoid buffer overflow)
                                     buff[bytesRecieved] = '\0';
                                     
                                     //printf("Recieved (%i bytes): %s\n", bytesRecieved, buff);
                                     char *username;
                                     char *password;
+                                    
+                                    printf("Going to parse...");
+                                    if(parse(buff, &username, &password))
+                                    {
+                                        printf("Parse has been completed. Printing results...\n");
+                                        printf("Username: %s; Password: %s\n", username, password);
+                                        if(LoginUser(databasecon, username, password, NULL))
+                                        {
+                                            // The user successfully logged in! TODO: return token too
+                                            if(send(cli_fd, "OK", sizeof("OK"), 0) == -1)
+                                            {
+                                                perror("Error sending login confimration");
+                                            }
+                                            // If it successfully sent off the message, exit the loop
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            // The users credentials whre invalid
+                                            if(send(cli_fd, "NOK", sizeof("NOK"), 0) == -1)
+                                            {
+                                                perror("Error sending login error");
+                                            }
+                                            // If it successfully sent off the message, exit the loop
+                                            break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // The parse failed so return NOK
+                                        // The users credentials whre invalid
+                                        if(send(cli_fd, "NOK", sizeof("NOK"), 0) == -1)
+                                        {
+                                            perror("Error sending parse error");
+                                        }
+                                        // If it successfully sent off the message, exit the loop
+                                        break;
+                                    }
+                                    /*
                                     // Attempt to parse
                                     if(parse(buff, &username, &password))
                                     {
@@ -188,6 +229,7 @@ int main(int argc, char *argv[])
                                             perror("Error sending login error");
                                         }
                                     }
+                                    */
                                 }
                             }
                             // Close the connection to the client
@@ -240,30 +282,47 @@ int parse(char *source, char **username, char **password)
             fprintf(stdout, "Moving to next stage!\n");
             if(stage == 0)
             {
+                printf("Username parse hit!\n");
                 // TODO remove
-                fprintf(stdout, "Buffer: %s (%i chars)", buff, buffused);
+                //fprintf(stdout, "Buffer: %s (%i chars)", buff, buffused);
                 // Allocate the right ammount of memory to username
-                username = malloc((buffused + 1) * sizeof(char));
+                *username = malloc((buffused + 1) * sizeof(char));
+                printf("Malloced username memory!\n");
                 // Copy the buffer to the username (cant use strcpy as buff isn't null terminated)
                 for(int i = 0; i < buffused; i++)
                 {
-                    *username[i] = buff[i];
+                    (*username)[i] = buff[i];
                 }
+                
+                printf("Copied username from buffer!\n");
+                
                 // Null-terminate the string
-                *username[buffused] = '\0';
+                (*username)[buffused] = '\0';
+                printf("Null terminated username!\n");
+                printf("Username parse finished!\n");
                 
                 // TODO remove also WHY THE F****CK IS'T THIS COMMUNICATED BACK?!
-                printf("Buffer2: %s (%i chars)", *username, buffused);
+                //printf("Buffer2: %s (%i chars)", *username, buffused);
                 
             }
             else if(stage == 1)
             {
-                // Allocate the right ammount of memory to password
-                password = malloc((buffused + 1) * sizeof(char));
-                // Copy the buffer to the username
-                strcpy(*password, buff);
+                printf("Password done!\n");
+                // TODO remove
+                //fprintf(stdout, "Buffer: %s (%i chars)", buff, buffused);
+                // Allocate the right ammount of memory to username
+                *password = malloc((buffused + 1) * sizeof(char));
+                printf("Malloced password memory!\n");
+                // Copy the buffer to the password (cant use strcpy as buff isn't null terminated)
+                for(int i = 0; i < buffused; i++)
+                {
+                    (*password)[i] = buff[i];
+                }
+                printf("Copied password from buffer!\n");
                 // Null-terminate the string
-                password[buffused + 1] = '\0';
+                (*password)[buffused] = '\0';
+                printf("Null terminated password!\n");
+                printf("password parse finished!\n");
             }
             else
             {
@@ -282,10 +341,32 @@ int parse(char *source, char **username, char **password)
         }
     }
     
+    printf("parse for loop done!\n");
+    
     // Was the parse valid?
     if(stage != 1)
     {
         return 0;
+    }
+    // Does it still need to process the password?
+    else if(stage == 1)
+    {
+        printf("Password done!\n");
+        // TODO remove
+        //fprintf(stdout, "Buffer: %s (%i chars)", buff, buffused);
+        // Allocate the right ammount of memory to username
+        *password = malloc((buffused + 1) * sizeof(char));
+        printf("Malloced password memory!\n");
+        // Copy the buffer to the password (cant use strcpy as buff isn't null terminated)
+        for(int i = 0; i < buffused; i++)
+        {
+            (*password)[i] = buff[i];
+        }
+        printf("Copied password from buffer!\n");
+        // Null-terminate the string
+        (*password)[buffused] = '\0';
+        printf("Null terminated password!\n");
+        printf("password parse finished!\n");
     }
     
     // Otherwise assume everything went fine
@@ -301,12 +382,16 @@ void MySQLQueryFail_Handler(MYSQL *connection)
 
 int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *sessionID)
 {
+    printf("Starting MySQL login procedure!\n");
+    printf("Username Length: %i, password length: %i!\n", (int)strlen(username), (int)strlen(password));
     // TODO make this a prepared statement!!! And use the the below escape real etc
     // mysql_real_escape_string(username);
     
     // Create a variable to store the query and format the query
-    char *query = malloc(strlen("SELECT * FROM `PlayerAccounts`  WHERE `UserName`=``") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
-    sprintf(query, "SELECT * FROM `PlayerAccounts`  WHERE `UserName`=`%s`", username);
+    char *query = malloc(strlen("SELECT * FROM PlayerAccounts WHERE UserName = \"\"`") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
+    sprintf(query, "SELECT * FROM PlayerAccounts WHERE UserName = \"%s\"", username);
+    
+    printf("Query: %s\n", query);
     
     // Look the user up in the database
     if(mysql_query(connection, query))
@@ -322,6 +407,8 @@ int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *
         MySQLQueryFail_Handler(connection);
     }
     
+    
+    
     fprintf(stdout, "Database rows with your query:\n");
     
     int numFields = mysql_num_fields(entries);
@@ -329,10 +416,32 @@ int LoginUser(MYSQL *connection, char *username, char *password, /* OUT */char *
     
     while((entry = mysql_fetch_row(entries)))
     {
+        // Are the passwords different sizes?
+        if(strlen(entry[2]) < strlen(password))
+        {
+            // Then it can't be the correct password
+            return 0;
+        }
+        
+        // entry[2] is the password row. TODO make this encrypted/hashed
+        if(strncmp(entry[2], password, strlen(entry[2])) == 0)
+        {
+            // The user login was correct
+            return 1;
+        }
+        else
+        {
+            // The users password was incorrect
+            printf("%s != %s\n", entry[2], password);
+            //return 0;
+        }
         for(int i = 0; i < numFields; i++) 
         { 
           printf("%s ", entry[i] ? entry[i] : "NULL"); 
-        } 
+        }
     }
+    
+    // The username was not found!
+    return 0;
     
 }
