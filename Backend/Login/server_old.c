@@ -26,8 +26,8 @@
 #include <semaphore.h>
 // Crypto
 #include <openssl/sha.h>
-#include <openssl/rand.h>
-#include <openssl/md5.h>
+# include <openssl/rand.h>
+
 // Parameters
 #define CONNECTIONBACKLOG 5
 #define MAXUSERS 5
@@ -78,8 +78,8 @@ int main(int argc, char *argv[])
     * MySQL Login data!
     */
     
-    char *mysqluser = "root";
-    char *mysqlpasswd = "mysql";
+    char *mysqluser = "LoginServer";
+    char *mysqlpasswd = "jXLYAuuFxCA7g5gGG5BdzSMb";
     
     // Attempt to initialize the the MySQL object
     if((databasecon = mysql_init(NULL)) == NULL)
@@ -192,9 +192,8 @@ int main(int argc, char *argv[])
                                         if(LoginUser(databasecon, stmt_databasecon, username, password, &token))
                                         {
                                             // The user successfully logged in! TODO: return token too
-                                            char *returnmsg = malloc(strlen("OKE_") + strlen(token) + 1);
-                                            sprintf(returnmsg, "OKE_%s", token);
-					    //char *returnmsg = "OKE_123\0";
+                                            //char *returnmsg = malloc(strlen("OKE_") + strlen(token) + 1);
+                                            char *returnmsg = "OKE_123\0";
                                             if(send(cli_fd, returnmsg, strlen(returnmsg), 0) == -1)
                                             {
                                                 perror("Error sending login confimration");
@@ -308,7 +307,6 @@ int parse(char *source, char **username, char **password)
             {
                 // Something didn't go quite right!
                 stage++;
-		printf("Error while parsing!!!\n");
                 break;
             }
             
@@ -395,34 +393,12 @@ int LoginUser(MYSQL *connection, MYSQL_STMT *stmt_connection, char *username, ch
     */
     
     // TODO replace this!!! Buffer overflow!!!
-
-    char *tokenbuffer = malloc(16384);
-
-    struct tm *tm;
-    time_t t;
-    char str_time[1024];
+    char *tokenbuffer = malloc(1024);
     
-    t = time(NULL);
-    tm = localtime(&t);
-
-    strftime(str_time, sizeof(str_time), "%H %M %S", tm);
-
+    sprintf(tokenbuffer, "%i", tokencounter);
+    
     tokencounter++;
-
-    sprintf(tokenbuffer, "%s%s%i%s%s%s", "@)^NKVDSLfdsf@%$FS", username, tokencounter, ",.,.kjsFDASgfn6349hj", str_time, "F**DSGSG(YSY#*@(&R@&#$#");
     
-    printf("Created token!");
-    
-unsigned char digest[16];
-const char* string = tokenbuffer;
-MD5_CTX context;
-MD5_Init(&context);
-MD5_Update(&context, string, strlen(string));
-MD5_Final(digest, &context);
-char md5string[33];
-for(int i = 0; i < 16; ++i)
-    sprintf(&md5string[i*2], "%02x", (unsigned int)digest[i]);
-
     // TODO replace the * with only the required stuff
     // Create a variable to store the query and format the query
     char *query = malloc(strlen("SELECT * FROM PlayerAccounts WHERE UserName = \"\"`") * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
@@ -459,8 +435,8 @@ for(int i = 0; i < 16; ++i)
             // The user login was correct.
             
             // Insert the random token
-            char *query2 = malloc(strlen("UPDATE PlayerAccounts SET SessionID=\"\" WHERE UserName = \"\"") * sizeof(char) + strlen(username) * sizeof(char) + strlen(username) * sizeof(char) + strlen(md5string) * sizeof(char) + sizeof(char));
-            sprintf(query2, "UPDATE PlayerAccounts SET SessionID=\"%s\" WHERE UserName = \"%s\"", md5string, username);
+            char *query2 = malloc(strlen("UPDATE PlayerAccounts SET SessionID=\"\" WHERE UserName = \"\"") * sizeof(char) + strlen(username) * sizeof(char) + strlen(username) * sizeof(char) + sizeof(char));
+            sprintf(query2, "UPDATE PlayerAccounts SET SessionID=\"%s\" WHERE UserName = \"%s\"", tokenbuffer, username);
             
             // Attempt to insert
             // Look the user up in the database
@@ -469,7 +445,7 @@ for(int i = 0; i < 16; ++i)
                 MySQLQueryFail_Handler(connection);
             }
             
-            *sessionID = md5string;
+            *sessionID = tokenbuffer;
             
             return 1;
         }
